@@ -11,10 +11,8 @@ from typing import Any
 
 from backend.config import Settings
 from backend.cost_tracker import CostTracker
-from backend.ctfd import CTFdClient
 from backend.deps import CoordinatorDeps
 from backend.models import DEFAULT_MODELS
-from backend.poller import CTFdPoller
 from backend.prompts import ChallengeMeta
 
 logger = logging.getLogger(__name__)
@@ -30,14 +28,29 @@ def build_deps(
     no_submit: bool = False,
     challenge_dirs: dict[str, str] | None = None,
     challenge_metas: dict[str, ChallengeMeta] | None = None,
-) -> tuple[CTFdClient, CostTracker, CoordinatorDeps]:
-    """Create CTFd client, cost tracker, and coordinator deps."""
-    ctfd = CTFdClient(
-        base_url=settings.ctfd_url,
-        token=settings.ctfd_token,
-        username=settings.ctfd_user,
-        password=settings.ctfd_pass,
-    )
+    ctfd=None,
+) -> tuple[Any, CostTracker, CoordinatorDeps]:
+    """Create platform client, cost tracker, and coordinator deps.
+
+    If ctfd is provided (a PlatformClient), it is reused directly.
+    Otherwise, a new one is created from settings (auto-detected platform).
+    """
+    if ctfd is None:
+        # Lazy import to keep startup fast
+        import asyncio as _asyncio
+        from backend.platform.detect import detect_platform
+        from backend.platform.compat import PlatformClient
+
+        platform = _asyncio.get_event_loop().run_until_complete(
+            detect_platform(
+                url=settings.effective_url(),
+                username=settings.effective_user(),
+                password=settings.effective_pass(),
+                token=settings.effective_token(),
+            )
+        )
+        ctfd = PlatformClient(platform)
+
     cost_tracker = CostTracker()
     specs = model_specs or list(DEFAULT_MODELS)
     Path(challenges_root).mkdir(parents=True, exist_ok=True)
@@ -68,7 +81,7 @@ def build_deps(
 
 async def run_event_loop(
     deps: CoordinatorDeps,
-    ctfd: CTFdClient,
+    ctfd: Any,
     cost_tracker: CostTracker,
     turn_fn: TurnFn,
     status_interval: int = 60,
@@ -77,11 +90,12 @@ async def run_event_loop(
 
     Args:
         deps: Coordinator dependencies (shared state).
-        ctfd: CTFd client (for poller).
+        ctfd: PlatformClient (universal platform adapter).
         cost_tracker: Cost tracker.
         turn_fn: Async function that sends a message to the coordinator LLM.
         status_interval: Seconds between status updates.
     """
+    from backend.poller import CTFdPoller
     poller = CTFdPoller(ctfd=ctfd, interval_s=5.0)
     await poller.start()
 

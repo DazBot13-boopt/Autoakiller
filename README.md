@@ -65,38 +65,75 @@ docker build -f sandbox/Dockerfile.sandbox -t ctf-sandbox .
 
 # Configure credentials
 cp .env.example .env
-# Edit .env with your API keys and CTFd token
+# Edit .env with your CTF platform URL and credentials
+# No API keys required — uses claude and codex CLIs
 
-# Run against a CTFd instance
+# Run against any CTF platform (auto-detected)
 uv run ctf-solve \
-  --ctfd-url https://ctf.example.com \
-  --ctfd-token ctfd_your_token \
-  --challenges-dir challenges \
+  --url https://ctf.example.com \
+  --user yourteam \
+  --password yourpassword \
   --max-challenges 10 \
   -v
+
+# HackTheBox CTF event
+uv run ctf-solve --url https://ctf.hackthebox.com/event/123 --token your_htb_token
+
+# picoCTF
+uv run ctf-solve --url https://play.picoctf.org --user me --password pw
+
+# Single challenge (no platform needed)
+uv run ctf-solve --challenge ./challenges/my-challenge
+
+# Offline mode (local JSON file with challenge data)
+uv run ctf-solve --url http://any.ctf.site --challenges-json challenges.json
 ```
+
+## Supported Platforms
+
+The agent auto-detects and adapts to any CTF platform:
+
+| Platform | Detection | Auth |
+|----------|-----------|------|
+| **CTFd** | HTML fingerprint | user/pass or token |
+| **HackTheBox** | Hostname or HTML | API token or email/pass |
+| **rCTF** | HTML fingerprint | team token |
+| **picoCTF** | Hostname or HTML | user/pass or token |
+| **Generic** | Fallback | user/pass, token, or unauthenticated |
+
+Pass `--url`, `--user`, `--password` (and optionally `--token`) — the rest is automatic.
 
 ## Coordinator Backends
 
 ```bash
-# Claude SDK coordinator (default)
-uv run ctf-solve --coordinator claude ...
+# Claude CLI coordinator (default)
+uv run ctf-solve --url https://ctf.example.com --user team --password pw --coordinator claude
 
-# Codex coordinator (GPT-5.4 via JSON-RPC)
-uv run ctf-solve --coordinator codex ...
+# Codex CLI coordinator
+uv run ctf-solve --url https://ctf.example.com --user team --password pw --coordinator codex
 ```
 
-## Solver Models
+## Models — No API Keys Required
 
-Default model lineup (configurable in `backend/models.py`):
+The default setup uses only the `claude` and `codex` CLIs — **zero API keys needed**.
 
-| Model | Provider | Notes |
-|-------|----------|-------|
-| Claude Opus 4.6 (medium) | Claude SDK | Balanced speed/quality |
-| Claude Opus 4.6 (max) | Claude SDK | Deep reasoning |
-| GPT-5.4 | Codex | Best overall solver |
-| GPT-5.4-mini | Codex | Fast, good for easy challenges |
-| GPT-5.3-codex | Codex | Reasoning model (xhigh effort) |
+| Model | Provider | CLI |
+|-------|----------|-----|
+| Claude Opus 4.6 (medium) | Claude Code | `claude` CLI |
+| Claude Opus 4.6 (max) | Claude Code | `claude` CLI |
+| GPT-5.4 | Codex | `codex` CLI |
+| GPT-5.4-mini | Codex | `codex` CLI |
+| GPT-5.3-codex | Codex | `codex` CLI |
+
+Optional API-backed fallbacks (Bedrock, Azure, Google) are available if you set the corresponding keys in `.env`.
+
+## Requirements
+
+- Python 3.14+
+- Docker
+- `claude` CLI (Claude Code) — authenticated
+- `codex` CLI — authenticated
+- No API keys required for the default configuration
 
 ## Sandbox Tooling
 
@@ -123,21 +160,23 @@ Each solver gets an isolated Docker container pre-loaded with CTF tools:
 
 ## Configuration
 
-Copy `.env.example` to `.env` and fill in your keys:
+Copy `.env.example` to `.env`:
 
 ```bash
 cp .env.example .env
 ```
 
 ```env
-CTFD_URL=https://ctf.example.com
-CTFD_TOKEN=ctfd_your_token
-ANTHROPIC_API_KEY=sk-ant-...
-OPENAI_API_KEY=sk-...
-GEMINI_API_KEY=...
-```
+# CTF Platform (any supported site)
+CTF_URL=https://ctf.example.com
+CTF_USER=yourteam
+CTF_PASS=yourpassword
+CTF_TOKEN=           # Optional API token
 
-All settings can also be passed as environment variables or CLI flags.
+# API keys — only needed for optional API-backed fallback providers
+# ANTHROPIC_API_KEY=sk-ant-...
+# OPENAI_API_KEY=sk-...
+```
 
 ## Requirements
 

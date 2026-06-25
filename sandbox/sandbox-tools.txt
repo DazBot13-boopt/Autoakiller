@@ -7,6 +7,9 @@ nc (netcat)        TCP/UDP connections. nc host port <<'EOF' for heredoc session
 curl               HTTP client. -s silent, -k skip TLS, -d data, -H header.
 wget               HTTP download. wget -O file url.
 nmap               Port scanner. nmap -sV host, nmap -p- host.
+whois              Domain info. whois domain.com
+dig / nslookup     DNS queries. dig domain.com ANY
+traceroute         Route tracing.
 
 == BINARY ANALYSIS ==
 file               Identify file type. file binary
@@ -17,12 +20,22 @@ binwalk            Firmware/embedded extraction. binwalk -e file to extract.
 objdump            Disassembly. objdump -d binary (from binutils).
 readelf            ELF header info. readelf -a binary.
 nm                 Symbol listing. nm binary.
+nasm               x86 assembler. nasm -f elf64 asm.asm -o asm.o
+lief               Binary patching (Python). import lief; b=lief.parse('bin')
+patchelf           ELF patcher. patchelf --set-interpreter /lib/ld.so binary
 
 == DEBUGGERS / TRACING ==
 gdb                GNU debugger. gdb binary, then run, break, info, x/...
+gdb-multiarch      Cross-arch debugging (ARM, MIPS, etc.)
+pwndbg             GDB plugin with exploit helpers. Loaded automatically in gdb.
 ltrace             Library call tracer. ltrace ./binary
 strace             System call tracer. strace ./binary
 radare2            Reverse engineering. r2 binary, then aaa; pdf @main; afl
+
+== DECOMPILERS ==
+pyghidra           Ghidra (Python API). import pyghidra; ...
+jadx               Java/Android decompiler. jadx classes.dex / jadx app.apk
+apktool            APK reverse. apktool d app.apk -o out/
 
 == STEGANOGRAPHY ==
 steghide           Embed/extract in JPEG/BMP/WAV. steghide extract -sf file.jpg
@@ -39,6 +52,12 @@ tesseract          OCR. tesseract image.png stdout, or --psm 6 for block text.
 ffmpeg             Audio/video processing. ffmpeg -i in.wav out.mp3
 sox                Audio analysis. sox in.wav -n spectrogram -o spec.png
 
+== NETWORK FORENSICS ==
+tshark             CLI Wireshark. tshark -r capture.pcap -Y 'http'
+tcpdump            Packet capture. tcpdump -i eth0 -w out.pcap
+scapy              Python packet manipulation. from scapy.all import *
+pyshark            Python pcap parser. import pyshark; cap=pyshark.FileCapture('f.pcap')
+
 == FILESYSTEM FORENSICS ==
 mmls               Sleuthkit: partition layout. mmls disk.img
 fls                Sleuthkit: list files (incl. deleted). fls -r -o offset disk.img
@@ -51,31 +70,45 @@ xfs_db             XFS debugger. xfs_db -c "sb 0" -c "p" disk.img
 xfs_repair         XFS repair. xfs_repair -n disk.img (read-only check).
 dcfldd             Forensic dd with hashing. dcfldd if=in of=out hash=md5
 volatility3        Memory forensics. vol -f memdump.raw windows.info
+oletools           Office document analysis. olevba doc.docm, oleid file.xls
 
 == CRYPTOGRAPHY ==
 openssl            Crypto swiss army knife. openssl enc, openssl rsa, openssl s_client
+gpg                PGP/GPG. gpg --decrypt file.gpg
 RsaCtfTool         Automated RSA attacks. RsaCtfTool -n N -e E --attack all
 sage               SageMath CAS. sage -c 'from sage.all import *; print(factor(n))'
                    ECM factoring: sage -c 'from sage.all import *; print(ecm.factor(n))'
                    LLL lattice: sage -c 'M=matrix(ZZ,[...]); print(M.LLL())'
 cado-nfs           Number Field Sieve (large factoring/DLP). cado-nfs <N>
 flatter            Fast LLL lattice reduction. flatter < input_matrix
+hashcat            GPU/CPU hash cracker. hashcat -m 0 hash.txt wordlist.txt
+john               Password cracker. john --wordlist=rockyou.txt hash.txt
+
+== WEB TOOLS ==
+sqlmap             SQL injection auto. sqlmap -u "url?id=1" --dbs
+nikto              Web vulnerability scanner. nikto -h http://target
+dirb               Directory brute-forcer. dirb http://target /usr/share/dirb/wordlists/common.txt
+ffuf               Fast web fuzzer. ffuf -w wordlist.txt -u http://target/FUZZ
+gobuster           Dir/DNS brute-forcer. gobuster dir -u http://target -w wordlist.txt
+Playwright         Headless browser (JS-heavy). from playwright.sync_api import sync_playwright
+wfuzz              Web fuzzer. wfuzz -c -z file,wordlist.txt http://target/FUZZ
 
 == BUILD TOOLS ==
 gcc / g++          C/C++ compiler. gcc -o exploit exploit.c
+nasm               x86/x64 assembler. nasm -f elf64 code.asm
 make / cmake       Build systems.
 jq                 JSON processor. cat file.json | jq '.key'
 
 == ARCHIVE ==
 zip / unzip        ZIP archives.
+p7zip              7z archives. 7z x archive.7z
 git                Version control / clone repos.
 
 == CONTAINERS (Podman) ==
 podman             Run challenge Docker images inside the sandbox.
                    podman run -d -p 8080:80 challenge-image
                    podman build -t myimage .
-podman-compose     Docker Compose compatible. podman-compose up -d
-buildah            Build OCI container images. buildah bud -t myimage .
+buildah            Build OCI container images.
 
 == PYTHON 3 LIBRARIES ==
 pwntools           CTF exploit framework. from pwn import *
@@ -89,23 +122,35 @@ angr               Binary analysis framework. import angr; p=angr.Project('bin')
 capstone           Disassembly engine. from capstone import *
 unicorn            CPU emulator. from unicorn import *
 ropgadget          ROP gadget finder. ROPgadget --binary binary
+lief               Binary format parsing/patching. import lief
 Pillow             Image processing. from PIL import Image
 pytesseract        Python OCR wrapper. pytesseract.image_to_string(img)
 scipy              Scientific computing. scipy.optimize, scipy.linalg.
 numpy              Numerical arrays. np.frombuffer, np.bitwise_xor.
-requests           HTTP client. requests.get(url), requests.post(url, data=...).
-flask              HTTP server. Quick listeners for callbacks.
+requests / httpx   HTTP clients. requests.get(url), httpx.get(url)
+flask / fastapi    HTTP server. Quick listeners for callbacks.
+beautifulsoup4     HTML parsing. from bs4 import BeautifulSoup
+scapy              Packet crafting/parsing. from scapy.all import *
+pyshark            pcap analysis. import pyshark
 volatility3        Memory forensics framework (Python API).
+oletools           Office malware analysis. olevba, oleid, mraptor.
+ciphey             Auto cipher identifier/decoder. ciphey -t "encoded_text"
+ecdsa              ECDSA crypto. from ecdsa import SigningKey, NIST256p
 torch              PyTorch (CPU). import torch — tensors, neural nets, ML inference.
 keras              Keras deep learning. import keras — model loading, inference.
 PyJWT              JWT encode/decode. import jwt; jwt.encode(payload, key, algorithm='HS256')
+python-magic       File type detection. import magic; magic.from_file('f', mime=True)
+
+== RUBY GEMS ==
+zsteg              PNG/BMP steg. zsteg file.png
+one_gadget         libc one-gadget ROP. one_gadget /lib/x86_64-linux-gnu/libc.so.6
 
 == NOTES ==
-- Sandbox runs ARM64. Do NOT execute x86/x86-64 binaries locally.
-  Use Ghidra tools for RE, and interact with remote services for dynamic analysis.
-- Need a package not listed? Run `pip install <pkg>` or `uv pip install <pkg>`.
 - Distfiles are at /challenge/distfiles/ (read-only)
 - Write generated/repaired files to /challenge/workspace/ (writable)
 - Services on the host are reachable via host.docker.internal (bridge networking).
-- RsaCtfTool is at /opt/RsaCtfTool/
-- CADO-NFS is at /opt/cado-nfs/
+- Need a package not listed? Run: pip install <pkg>  or  apt-get install <pkg>
+- RsaCtfTool: /opt/RsaCtfTool/
+- CADO-NFS: /opt/cado-nfs/
+- jadx: /opt/jadx/bin/jadx
+- Wordlists: /usr/share/wordlists/ (john), /usr/share/dirb/wordlists/

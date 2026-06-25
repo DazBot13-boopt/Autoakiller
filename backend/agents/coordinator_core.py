@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import itertools
 import json
 import logging
 from pathlib import Path
@@ -12,6 +13,17 @@ from backend.prompts import ChallengeMeta
 from backend.solver_base import FLAG_FOUND
 
 logger = logging.getLogger(__name__)
+
+# Round-robin model distributor — chaque challenge reçoit le prochain modèle disponible
+_model_counter: dict[int, itertools.cycle] = {}
+
+
+def _next_model(deps: CoordinatorDeps) -> str:
+    """Retourne le prochain modèle en round-robin."""
+    key = id(deps)
+    if key not in _model_counter:
+        _model_counter[key] = itertools.cycle(deps.model_specs)
+    return next(_model_counter[key])
 
 
 async def do_fetch_challenges(deps: CoordinatorDeps) -> str:
@@ -34,11 +46,12 @@ async def do_fetch_challenges(deps: CoordinatorDeps) -> str:
 async def do_get_solve_status(deps: CoordinatorDeps) -> str:
     solved = await deps.ctfd.fetch_solved_names()
     swarm_status = {name: swarm.get_status() for name, swarm in deps.swarms.items()}
-    return json.dumps({"solved": sorted(solved), "active_swarms": swarm_status}, indent=2)
+    return json.dumps({"solved": sorted(solved), "active_solvers": swarm_status}, indent=2)
 
 
-async def do_spawn_swarm(deps: CoordinatorDeps, challenge_name: str) -> str:
-    # Retire ALL finished swarms before checking capacity
+async def do_spawn_swarm(deps: CoordinatorDeps, challenge_name: str, model_spec: str | None = None) -> str:
+    """Lance un solver sur un challenge. Assigne automatiquement le prochain modèle dispo."""
+    # Retire les solvers terminés
     finished = [
         name for name, swarm in deps.swarms.items()
         if swarm.cancel_event.is_set()
@@ -50,21 +63,24 @@ async def do_spawn_swarm(deps: CoordinatorDeps, challenge_name: str) -> str:
 
     active_count = len(deps.swarms)
     if active_count >= deps.max_concurrent_challenges:
-        return f"At capacity ({active_count}/{deps.max_concurrent_challenges} challenges running). Wait for one to finish."
+        return f"Capacité max atteinte ({active_count}/{deps.max_concurrent_challenges}). Attendre qu'un challenge se termine."
 
     if challenge_name in deps.swarms:
-        return f"Swarm still running for {challenge_name}"
+        return f"Solver déjà en cours sur {challenge_name}"
 
-    # Auto-pull challenge if needed
+    # Auto-pull challenge si nécessaire
     if challenge_name not in deps.challenge_dirs:
         challenges = await deps.ctfd.fetch_all_challenges()
         ch_data = next((c for c in challenges if c.get("name") == challenge_name), None)
         if not ch_data:
-            return f"Challenge '{challenge_name}' not found on CTFd"
+            return f"Challenge '{challenge_name}' introuvable"
         output_dir = str(Path(deps.challenges_root))
         ch_dir = await deps.ctfd.pull_challenge(ch_data, output_dir)
         deps.challenge_dirs[challenge_name] = ch_dir
         deps.challenge_metas[challenge_name] = ChallengeMeta.from_yaml(Path(ch_dir) / "metadata.yml")
+
+    # Assigne le modèle (round-robin si non spécifié)
+    assigned_model = model_spec or _next_model(deps)
 
     from backend.agents.swarm import ChallengeSwarm
 
@@ -74,7 +90,7 @@ async def do_spawn_swarm(deps: CoordinatorDeps, challenge_name: str) -> str:
         ctfd=deps.ctfd,
         cost_tracker=deps.cost_tracker,
         settings=deps.settings,
-        model_specs=deps.model_specs,
+        model_specs=[assigned_model],   # 1 seul modèle par challenge
         no_submit=deps.no_submit,
         coordinator_inbox=deps.coordinator_inbox,
     )
@@ -82,16 +98,16 @@ async def do_spawn_swarm(deps: CoordinatorDeps, challenge_name: str) -> str:
 
     async def _run_and_cleanup() -> None:
         result = await swarm.run()
-        # Flag already submitted/confirmed by solver's submit_fn — just record the result
         if result and result.status == FLAG_FOUND:
             deps.results[challenge_name] = {
                 "flag": result.flag,
-                "submit": "DRY RUN" if deps.no_submit else "confirmed by solver",
+                "model": assigned_model,
+                "submit": "DRY RUN" if deps.no_submit else "confirmed",
             }
 
-    task = asyncio.create_task(_run_and_cleanup(), name=f"swarm-{challenge_name}")
+    task = asyncio.create_task(_run_and_cleanup(), name=f"solver-{challenge_name}")
     deps.swarm_tasks[challenge_name] = task
-    return f"Swarm spawned for {challenge_name} with {len(deps.model_specs)} models"
+    return f"Solver lancé sur '{challenge_name}' avec {assigned_model}"
 
 
 async def do_check_swarm_status(deps: CoordinatorDeps, challenge_name: str) -> str:

@@ -60,12 +60,15 @@ def build_prompt(
     distfile_names: list[str],
     container_arch: str = "unknown",
     has_named_tools: bool = True,
+    inject_knowledge: bool = True,
 ) -> str:
     """Build the system prompt.
 
     has_named_tools: True for Pydantic AI solver (has view_image, webhook_create, etc.
     as discrete tools). False for Claude SDK (bash-only — model should use
     steghide/exiftool/curl instead). Codex has named dynamic tools so uses True.
+    inject_knowledge: If True, inject CTF knowledge base (techniques + writeups) for
+    the challenge category.
     """
     conn_info = _rewrite_connection_info(meta.connection_info.strip())
 
@@ -178,4 +181,19 @@ def build_prompt(
         "7. Do not guess. Do not ask. Cover maximum surface area.",
     ]
 
-    return "\n".join(lines)
+    prompt = "\n".join(lines)
+
+    # Injecter la base de connaissances CTF selon la categorie
+    if inject_knowledge and meta.category:
+        try:
+            from backend.knowledge.loader import inject_knowledge_into_prompt
+            from backend.knowledge.writeup_writer import get_similar_writeups
+            prompt = inject_knowledge_into_prompt(prompt, meta.category)
+            # Ajouter les writeups de challenges similaires deja resolus
+            similar = get_similar_writeups(meta.category, max_chars=2000)
+            if similar:
+                prompt += f"\n\n---\n{similar}\n---"
+        except Exception:
+            pass  # Non-fatal
+
+    return prompt

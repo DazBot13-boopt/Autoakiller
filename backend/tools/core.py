@@ -74,7 +74,10 @@ async def do_list_files(sandbox, path: str = "/challenge/distfiles") -> str:
 
 
 async def do_submit_flag(ctfd, challenge_name: str, flag: str) -> tuple[str, bool]:
-    """Submit a flag. Returns (display_message, is_confirmed)."""
+    """Submit a flag. Returns (display_message, is_confirmed).
+
+    Works with PlatformClient or any object with a submit_flag method.
+    """
     flag = flag.strip()
     if not flag:
         return "Empty flag — nothing to submit.", False

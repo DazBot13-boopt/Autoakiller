@@ -24,7 +24,6 @@ from claude_agent_sdk import (
 )
 
 from backend.cost_tracker import CostTracker
-from backend.ctfd import CTFdClient
 from backend.loop_detect import LoopDetector
 from backend.models import model_id_from_spec
 from backend.output_types import solver_output_json_schema
@@ -44,7 +43,7 @@ class ClaudeSolver:
         model_spec: str,
         challenge_dir: str,
         meta: ChallengeMeta,
-        ctfd: CTFdClient,
+        ctfd,  # PlatformClient
         cost_tracker: CostTracker,
         settings: object,
         cancel_event: asyncio.Event | None = None,

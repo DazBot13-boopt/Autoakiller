@@ -29,8 +29,15 @@ def _setup_logging(verbose: bool = False) -> None:
 
 
 @click.command()
-@click.option("--ctfd-url", default=None, help="CTFd URL (overrides .env)")
-@click.option("--ctfd-token", default=None, help="CTFd API token (overrides .env)")
+# ── Platform connection ───────────────────────────────────────────────────────
+@click.option("--url", default=None, help="CTF platform URL (any supported site)")
+@click.option("--user", default=None, help="Username / email for login")
+@click.option("--password", default=None, help="Password for login")
+@click.option("--token", default=None, help="API token (optional, overrides user/password)")
+# ── Legacy CTFd aliases (backward-compat) ─────────────────────────────────────
+@click.option("--ctfd-url", default=None, hidden=True, help="[legacy] CTFd URL")
+@click.option("--ctfd-token", default=None, hidden=True, help="[legacy] CTFd API token")
+# ── Solver options ────────────────────────────────────────────────────────────
 @click.option("--image", default="ctf-sandbox", help="Docker sandbox image name")
 @click.option("--models", multiple=True, help="Model specs (default: all configured)")
 @click.option("--challenge", default=None, help="Solve a single challenge directory")
@@ -38,10 +45,15 @@ def _setup_logging(verbose: bool = False) -> None:
 @click.option("--no-submit", is_flag=True, help="Dry run — don't submit flags")
 @click.option("--coordinator-model", default=None, help="Model for coordinator (default: claude-opus-4-6)")
 @click.option("--coordinator", default="claude", type=click.Choice(["claude", "codex"]), help="Coordinator backend")
-@click.option("--max-challenges", default=10, type=int, help="Max challenges solved concurrently")
+@click.option("--max-challenges", default=3, type=int, help="Max challenges solved concurrently")
 @click.option("--msg-port", default=0, type=int, help="Operator message port (0 = auto)")
+@click.option("--challenges-json", default=None, help="Path to local JSON/YAML file with challenge data (offline mode)")
 @click.option("-v", "--verbose", is_flag=True, help="Verbose logging")
 def main(
+    url: str | None,
+    user: str | None,
+    password: str | None,
+    token: str | None,
     ctfd_url: str | None,
     ctfd_token: str | None,
     image: str,
@@ -53,34 +65,72 @@ def main(
     coordinator: str,
     max_challenges: int,
     msg_port: int,
+    challenges_json: str | None,
     verbose: bool,
 ) -> None:
     """CTF Agent — multi-model solver swarm.
 
-    Run without --challenge to start the full coordinator (Ctrl+C to stop).
+    Point it at any CTF platform and it will auto-detect, login, and solve.
+
+    Examples:
+      ctf-solve --url https://ctf.example.com --user team --password secret
+      ctf-solve --url https://app.hackthebox.com --token your_htb_token
+      ctf-solve --url https://2026.picoctf.org --user me --password pw
+      ctf-solve --challenge ./challenges/my-challenge  # single challenge, no platform
     """
     _setup_logging(verbose)
 
     settings = Settings(sandbox_image=image)
-    if ctfd_url:
-        settings.ctfd_url = ctfd_url
-    if ctfd_token:
-        settings.ctfd_token = ctfd_token
+
+    # Resolve effective URL/credentials (new flags > legacy flags > .env)
+    effective_url = url or ctfd_url or settings.effective_url()
+    effective_user = user or settings.effective_user()
+    effective_pass = password or settings.effective_pass()
+    effective_token = token or ctfd_token or settings.effective_token()
+
+    settings.ctf_url = effective_url
+    settings.ctf_user = effective_user
+    settings.ctf_pass = effective_pass
+    settings.ctf_token = effective_token
     settings.max_concurrent_challenges = max_challenges
 
     model_specs = list(models) if models else list(DEFAULT_MODELS)
 
-    console.print("[bold]CTF Agent v2[/bold]")
-    console.print(f"  CTFd: {settings.ctfd_url}")
-    console.print(f"  Models: {', '.join(model_specs)}")
-    console.print(f"  Image: {settings.sandbox_image}")
-    console.print(f"  Max challenges: {max_challenges}")
+    console.print("[bold]CTF Agent[/bold]")
+    console.print(f"  Platform: {effective_url}")
+    if effective_user:
+        console.print(f"  User    : {effective_user}")
+    if effective_token:
+        console.print(f"  Token   : {'*' * 8}{effective_token[-4:] if len(effective_token) > 4 else '****'}")
+    console.print(f"  Models  : {', '.join(model_specs)}")
+    console.print(f"  Image   : {settings.sandbox_image}")
+    console.print(f"  Max     : {max_challenges} concurrent challenges")
     console.print()
 
     if challenge:
         asyncio.run(_run_single(settings, challenge, model_specs, no_submit, max_challenges))
     else:
-        asyncio.run(_run_coordinator(settings, model_specs, challenges_dir, no_submit, coordinator_model, coordinator, max_challenges, msg_port))
+        asyncio.run(_run_coordinator(
+            settings, model_specs, challenges_dir, no_submit,
+            coordinator_model, coordinator, max_challenges, msg_port,
+            challenges_json=challenges_json,
+        ))
+
+
+async def _build_platform_client(settings: Settings, challenges_json: str | None = None):
+    """Auto-detect platform and return a PlatformClient."""
+    from backend.platform.detect import detect_platform
+    from backend.platform.compat import PlatformClient
+
+    platform = await detect_platform(
+        url=settings.effective_url(),
+        username=settings.effective_user(),
+        password=settings.effective_pass(),
+        token=settings.effective_token(),
+        challenges_json=challenges_json or "",
+    )
+    console.print(f"  [dim]Platform detected: {platform.platform_name}[/dim]")
+    return PlatformClient(platform)
 
 
 async def _run_single(
@@ -90,10 +140,9 @@ async def _run_single(
     no_submit: bool,
     max_challenges: int,
 ) -> None:
-    """Run a single challenge with a swarm."""
+    """Run a single challenge with a swarm (no platform required)."""
     from backend.agents.swarm import ChallengeSwarm
     from backend.cost_tracker import CostTracker
-    from backend.ctfd import CTFdClient
     from backend.prompts import ChallengeMeta
     from backend.sandbox import cleanup_orphan_containers, configure_semaphore
 
@@ -110,18 +159,15 @@ async def _run_single(
     meta = ChallengeMeta.from_yaml(meta_path)
     console.print(f"[bold]Challenge:[/bold] {meta.name} ({meta.category}, {meta.value} pts)")
 
-    ctfd = CTFdClient(
-        base_url=settings.ctfd_url,
-        token=settings.ctfd_token,
-        username=settings.ctfd_user,
-        password=settings.ctfd_pass,
-    )
+    # For single-challenge mode we still need a platform client (for flag submission)
+    # If no URL is configured we use a no-op client
+    client = await _build_platform_client(settings)
     cost_tracker = CostTracker()
 
     swarm = ChallengeSwarm(
         challenge_dir=str(challenge_path),
         meta=meta,
-        ctfd=ctfd,
+        ctfd=client,
         cost_tracker=cost_tracker,
         settings=settings,
         model_specs=model_specs,
@@ -141,7 +187,7 @@ async def _run_single(
             console.print(f"  {agent_name}: {cost_tracker.format_usage(agent_name)}")
         console.print(f"  [bold]Total: ${cost_tracker.total_cost_usd:.2f}[/bold]")
     finally:
-        await ctfd.close()
+        await client.close()
 
 
 async def _run_coordinator(
@@ -153,6 +199,7 @@ async def _run_coordinator(
     coordinator_backend: str,
     max_challenges: int,
     msg_port: int = 0,
+    challenges_json: str | None = None,
 ) -> None:
     """Run the full coordinator (continuous until Ctrl+C)."""
     from backend.sandbox import cleanup_orphan_containers, configure_semaphore
@@ -160,28 +207,35 @@ async def _run_coordinator(
     max_containers = max_challenges * len(model_specs)
     configure_semaphore(max_containers)
     await cleanup_orphan_containers()
+
+    client = await _build_platform_client(settings, challenges_json=challenges_json)
     console.print(f"[bold]Starting coordinator ({coordinator_backend}, Ctrl+C to stop)...[/bold]\n")
 
-    if coordinator_backend == "codex":
-        from backend.agents.codex_coordinator import run_codex_coordinator
-        results = await run_codex_coordinator(
-            settings=settings,
-            model_specs=model_specs,
-            challenges_root=challenges_dir,
-            no_submit=no_submit,
-            coordinator_model=coordinator_model,
-            msg_port=msg_port,
-        )
-    else:
-        from backend.agents.claude_coordinator import run_claude_coordinator
-        results = await run_claude_coordinator(
-            settings=settings,
-            model_specs=model_specs,
-            challenges_root=challenges_dir,
-            no_submit=no_submit,
-            coordinator_model=coordinator_model,
-            msg_port=msg_port,
-        )
+    try:
+        if coordinator_backend == "codex":
+            from backend.agents.codex_coordinator import run_codex_coordinator
+            results = await run_codex_coordinator(
+                settings=settings,
+                model_specs=model_specs,
+                challenges_root=challenges_dir,
+                no_submit=no_submit,
+                coordinator_model=coordinator_model,
+                msg_port=msg_port,
+                ctfd=client,
+            )
+        else:
+            from backend.agents.claude_coordinator import run_claude_coordinator
+            results = await run_claude_coordinator(
+                settings=settings,
+                model_specs=model_specs,
+                challenges_root=challenges_dir,
+                no_submit=no_submit,
+                coordinator_model=coordinator_model,
+                msg_port=msg_port,
+                ctfd=client,
+            )
+    finally:
+        await client.close()
 
     console.print("\n[bold]Final Results:[/bold]")
     for challenge, data in results.get("results", {}).items():

@@ -10,35 +10,45 @@ ENV TERM=xterm
 RUN apt-get update && apt-get install -y \
     # Networking
     netcat-openbsd curl wget nmap \
+    dnsutils whois traceroute iputils-ping \
     # Binary analysis
     binutils file xxd bsdmainutils binwalk \
-    gdb ltrace strace \
+    gdb gdb-multiarch ltrace strace \
     # Forensics / steg / image analysis
     exiftool steghide \
     pngcheck imagemagick \
     # Filesystem forensics
     xfsprogs sleuthkit foremost dcfldd testdisk \
+    # Network forensics
+    tshark tcpdump wireshark-common \
     # Audio / media
     ffmpeg sox \
     # OCR
-    tesseract-ocr tesseract-ocr-eng \
+    tesseract-ocr tesseract-ocr-eng tesseract-ocr-fra \
     # Crypto / encoding
-    openssl libssl-dev \
+    openssl libssl-dev gpg \
+    # Password cracking
+    john hashcat \
+    # Web tools
+    nikto sqlmap dirb \
     # Build tools
-    gcc g++ make cmake \
+    gcc g++ make cmake nasm \
     # Python (system base)
     python3 python3-pip python3-dev \
     # Ruby (for zsteg)
     ruby ruby-dev \
-    # Java (for Ghidra headless if mounted)
-    default-jre-headless \
+    # Java (for Ghidra / jadx)
+    default-jre-headless default-jdk-headless \
+    # Node.js (for JS challenges)
+    nodejs npm \
     # Misc
-    git jq zip unzip ca-certificates ncurses-term \
+    git jq zip unzip p7zip-full tar \
+    ca-certificates ncurses-term tmux vim \
     # Math libs (required by flatter, cado-nfs, fpylll)
     libgmp-dev libmpfr-dev libfplll-dev libeigen3-dev \
     # z3 solver system lib
     libz3-dev \
-    # SageMath (Ubuntu 22.04 ships 9.x, works on aarch64 and amd64)
+    # SageMath
     sagemath \
     # CADO-NFS build deps
     libhwloc-dev libbz2-dev \
@@ -91,10 +101,10 @@ RUN apt-get update && apt-get install -y libmhash-dev libmcrypt-dev libjpeg-dev 
 RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel
 RUN pip3 install --no-cache-dir \
     pwntools \
-    pycryptodome \
+    pycryptodome pycryptodomex \
     sympy \
     gmpy2 \
-    requests \
+    requests httpx \
     Pillow \
     z3-solver \
     pytesseract \
@@ -106,10 +116,33 @@ RUN pip3 install --no-cache-dir \
     ropgadget \
     tqdm \
     fpylll \
-    flask \
+    flask fastapi uvicorn \
     volatility3 \
     PyJWT \
-    pyghidra
+    pyghidra \
+    # Web fuzzing / scanning
+    wfuzz \
+    # Network / pcap
+    scapy pyshark \
+    # Encoding / hash
+    base58 base64io \
+    mrcrowbar \
+    # Forensics helpers
+    python-magic \
+    oletools \
+    # Crypto extras
+    ecdsa \
+    sagemath-jupyter \
+    # Binary patching
+    patchelf \
+    lief \
+    # SQL / web
+    sqlparse \
+    beautifulsoup4 lxml \
+    # Misc CTF helpers
+    ciphey \
+    pwndbg \
+    || true
 
 # ── PyTorch (CPU-only) + Keras ────────────────────────────────────────────────
 RUN pip3 install --no-cache-dir --ignore-installed sympy \
@@ -119,6 +152,52 @@ RUN pip3 install --no-cache-dir --ignore-installed sympy \
 # ── RsaCtfTool (catch-all automated RSA/factoring attacks) ────────────────────
 RUN git clone --depth=1 https://github.com/RsaCtfTool/RsaCtfTool /opt/RsaCtfTool \
     && pip3 install --no-cache-dir /opt/RsaCtfTool
+
+# ── jadx (Android/Java decompiler) ───────────────────────────────────────────
+RUN wget -q https://github.com/skylot/jadx/releases/latest/download/jadx-dev-linux.zip \
+        -O /tmp/jadx.zip \
+    && unzip -q /tmp/jadx.zip -d /opt/jadx \
+    && ln -s /opt/jadx/bin/jadx /usr/local/bin/jadx \
+    && ln -s /opt/jadx/bin/jadx-gui /usr/local/bin/jadx-gui \
+    && rm /tmp/jadx.zip \
+    || echo "jadx install failed (non-fatal)"
+
+# ── apktool (APK reverse engineering) ────────────────────────────────────────
+RUN wget -q https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scripts/linux/apktool \
+        -O /usr/local/bin/apktool \
+    && wget -q https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.9.3.jar \
+        -O /usr/local/bin/apktool.jar \
+    && chmod +x /usr/local/bin/apktool \
+    || echo "apktool install failed (non-fatal)"
+
+# ── ffuf (fast web fuzzer) ────────────────────────────────────────────────────
+RUN GOVERSION=1.21.0 \
+    && wget -q https://go.dev/dl/go${GOVERSION}.linux-amd64.tar.gz -O /tmp/go.tar.gz \
+    && tar -C /usr/local -xzf /tmp/go.tar.gz \
+    && rm /tmp/go.tar.gz \
+    && /usr/local/go/bin/go install github.com/ffuf/ffuf/v2@latest \
+    && mv /root/go/bin/ffuf /usr/local/bin/ffuf \
+    || echo "ffuf install failed (non-fatal)"
+
+# ── gobuster (directory/DNS brute-forcer) ────────────────────────────────────
+RUN command -v /usr/local/go/bin/go >/dev/null 2>&1 \
+    && /usr/local/go/bin/go install github.com/OJ/gobuster/v3@latest \
+    && mv /root/go/bin/gobuster /usr/local/bin/gobuster \
+    || echo "gobuster install failed (non-fatal)"
+
+# ── pwndbg (GDB plugin for exploit dev) ──────────────────────────────────────
+RUN git clone --depth=1 https://github.com/pwndbg/pwndbg /opt/pwndbg \
+    && cd /opt/pwndbg && bash setup.sh --quiet \
+    || echo "pwndbg install failed (non-fatal)"
+
+# ── one_gadget (ROP gadget finder for libc) ───────────────────────────────────
+RUN gem install one_gadget \
+    || echo "one_gadget install failed (non-fatal)"
+
+# ── Playwright (headless browser for JS-heavy web challenges) ─────────────────
+RUN pip3 install --no-cache-dir playwright \
+    && playwright install chromium --with-deps \
+    || echo "Playwright install failed (non-fatal)"
 
 # ── CADO-NFS (Number Field Sieve — large integer factoring + DLP) ─────────────
 RUN git clone --depth=1 https://gitlab.inria.fr/cado-nfs/cado-nfs.git /opt/cado-nfs \

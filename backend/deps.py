@@ -8,11 +8,11 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from backend.cost_tracker import CostTracker
-from backend.ctfd import CTFdClient
 from backend.sandbox import DockerSandbox
 
 if TYPE_CHECKING:
     from backend.message_bus import ChallengeMessageBus
+    from backend.platform.compat import PlatformClient
 
 # Type for the deduped submit callback: (flag) -> (display, is_confirmed)
 SubmitFn = Callable[[str], Coroutine[Any, Any, tuple[str, bool]]]
@@ -21,23 +21,23 @@ SubmitFn = Callable[[str], Coroutine[Any, Any, tuple[str, bool]]]
 @dataclass
 class SolverDeps:
     sandbox: DockerSandbox
-    ctfd: CTFdClient
+    ctfd: "PlatformClient"          # Universal platform client (was CTFdClient)
     challenge_dir: str
     challenge_name: str
     workspace_dir: str
     use_vision: bool
     cost_tracker: CostTracker | None = None
     confirmed_flag: str | None = None
-    message_bus: ChallengeMessageBus | None = None
+    message_bus: "ChallengeMessageBus | None" = None
     model_spec: str = ""
-    submit_fn: SubmitFn | None = None  # Deduped flag submission via swarm
+    submit_fn: SubmitFn | None = None
     no_submit: bool = False
     notify_coordinator: Callable[[str], Coroutine[Any, Any, None]] | None = None
 
 
 @dataclass
 class CoordinatorDeps:
-    ctfd: CTFdClient
+    ctfd: "PlatformClient"          # Universal platform client
     cost_tracker: CostTracker
     settings: Any
     model_specs: list[str] = field(default_factory=list)

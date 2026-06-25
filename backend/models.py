@@ -1,29 +1,28 @@
-"""Model resolution — Bedrock, Azure OpenAI, Zen, Google AI Studio."""
+"""Model resolution — defaults to claude-sdk and codex CLIs (no API keys needed).
+
+The default setup requires only the `claude` and `codex` CLIs to be installed
+and authenticated. API-backed providers (Bedrock, Azure, Google) are optional
+fallbacks for when the CLIs are unavailable or quota-limited.
+"""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import boto3
-from pydantic_ai.models import Model
-from pydantic_ai.models.bedrock import BedrockConverseModel, BedrockModelSettings
-from pydantic_ai.models.google import GoogleModel, GoogleModelSettings
-from pydantic_ai.models.openai import OpenAIModel, OpenAIModelSettings
-from pydantic_ai.providers.bedrock import BedrockProvider
-from pydantic_ai.providers.google import GoogleProvider
-from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.settings import ModelSettings
 
 if TYPE_CHECKING:
+    from pydantic_ai.models import Model
     from backend.config import Settings
 
-# Default model specs — claude-sdk and codex providers use the new solver backends
+# ── Default models — no API keys required ────────────────────────────────────
+# Uses local claude CLI (Claude Code) and codex CLI exclusively.
 DEFAULT_MODELS: list[str] = [
-    "claude-sdk/claude-opus-4-6/medium",
-    "claude-sdk/claude-opus-4-6/max",
-    "codex/gpt-5.4",
-    "codex/gpt-5.4-mini",
-    "codex/gpt-5.3-codex",
+    "claude-sdk/claude-opus-4-6/medium",   # claude CLI, medium thinking
+    "claude-sdk/claude-opus-4-6/max",      # claude CLI, max thinking
+    "codex/gpt-5.4",                        # codex CLI
+    "codex/gpt-5.4-mini",                  # codex CLI, fast
+    "codex/gpt-5.3-codex",                 # codex CLI, reasoning
 ]
 
 # Context window sizes (tokens)
@@ -47,51 +46,54 @@ VISION_MODELS: set[str] = {
 }
 
 
-def resolve_model(spec: str, settings: Settings) -> Model:
-    """Resolve a 'provider/model_id' spec to a Pydantic AI Model."""
+def resolve_model(spec: str, settings: "Settings") -> "Model":
+    """Resolve a 'provider/model_id' spec to a Pydantic AI Model.
+
+    API-backed providers (bedrock, azure, zen, google) require the corresponding
+    keys in Settings. The default claude-sdk and codex providers never reach here
+    — they use their own solver backends.
+    """
+    # Lazy imports so optional heavy deps (boto3, etc.) don't block the default path
     provider = provider_from_spec(spec)
     model_id = model_id_from_spec(spec)
     match provider:
         case "bedrock":
+            import boto3
+            from pydantic_ai.models.bedrock import BedrockConverseModel
+            from pydantic_ai.providers.bedrock import BedrockProvider
             if settings.aws_bearer_token:
                 return BedrockConverseModel(
                     model_id,
-                    provider=BedrockProvider(
-                        api_key=settings.aws_bearer_token,
-                        region_name=settings.aws_region,
-                    ),
+                    provider=BedrockProvider(api_key=settings.aws_bearer_token, region_name=settings.aws_region),
                 )
-            else:
-                session = boto3.Session()
-                client = session.client("bedrock-runtime", region_name=settings.aws_region)
-                return BedrockConverseModel(
-                    model_id,
-                    provider=BedrockProvider(bedrock_client=client),
-                )
+            session = boto3.Session()
+            client = session.client("bedrock-runtime", region_name=settings.aws_region)
+            return BedrockConverseModel(model_id, provider=BedrockProvider(bedrock_client=client))
+
         case "azure":
+            from pydantic_ai.models.openai import OpenAIModel
+            from pydantic_ai.providers.openai import OpenAIProvider
             return OpenAIModel(
                 model_id,
-                provider=OpenAIProvider(
-                    base_url=settings.azure_openai_endpoint,
-                    api_key=settings.azure_openai_api_key,
-                ),
+                provider=OpenAIProvider(base_url=settings.azure_openai_endpoint, api_key=settings.azure_openai_api_key),
             )
+
         case "zen":
+            from pydantic_ai.models.openai import OpenAIModel
+            from pydantic_ai.providers.openai import OpenAIProvider
             return OpenAIModel(
                 model_id,
-                provider=OpenAIProvider(
-                    base_url="https://opencode.ai/zen/v1",
-                    api_key=settings.opencode_zen_api_key,
-                ),
+                provider=OpenAIProvider(base_url="https://opencode.ai/zen/v1", api_key=settings.opencode_zen_api_key),
             )
+
         case "google":
-            return GoogleModel(
-                model_id,
-                provider=GoogleProvider(api_key=settings.gemini_api_key),
-            )
+            from pydantic_ai.models.google import GoogleModel
+            from pydantic_ai.providers.google import GoogleProvider
+            return GoogleModel(model_id, provider=GoogleProvider(api_key=settings.gemini_api_key))
+
         case "claude-sdk" | "codex":
             raise ValueError(
-                f"Provider '{provider}' uses its own solver backend, not Pydantic AI. "
+                f"Provider '{provider}' uses its own solver backend (no API key). "
                 f"resolve_model() should not be called for {spec}."
             )
         case _:
@@ -103,6 +105,7 @@ def resolve_model_settings(spec: str) -> ModelSettings:
     provider = spec.split("/", 1)[0]
     match provider:
         case "bedrock":
+            from pydantic_ai.models.bedrock import BedrockModelSettings
             return BedrockModelSettings(
                 max_tokens=128_000,
                 bedrock_cache_instructions=True,
@@ -110,19 +113,13 @@ def resolve_model_settings(spec: str) -> ModelSettings:
                 bedrock_cache_messages=True,
             )
         case "azure" | "zen":
-            # Azure/Zen use OpenAI chat completions — server-side prompt caching
-            # is automatic, no explicit config needed. Set max_tokens to avoid
-            # reserving the full context window.
-            return OpenAIModelSettings(
-                max_tokens=128_000,
-            )
+            from pydantic_ai.models.openai import OpenAIModelSettings
+            return OpenAIModelSettings(max_tokens=128_000)
         case "google":
+            from pydantic_ai.models.google import GoogleModelSettings
             return GoogleModelSettings(
                 max_tokens=64_000,
-                google_thinking_config={
-                    "thinking_level": "high",
-                    "include_thoughts": True,
-                },
+                google_thinking_config={"thinking_level": "high", "include_thoughts": True},
             )
         case _:
             return ModelSettings(max_tokens=128_000)

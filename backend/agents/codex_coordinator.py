@@ -28,25 +28,22 @@ logger = logging.getLogger(__name__)
 _rpc_counter = itertools.count(1)
 
 COORDINATOR_PROMPT = """\
-You are a CTF competition coordinator running for the ENTIRE duration of a live competition.
-Your job is to maximize the number of challenges solved while minimizing cost.
+Tu es le coordinateur d'une compétition CTF en cours. Ton objectif : maximiser le nombre de challenges résolus.
 
-Strategy:
-- Spawn swarms for unsolved challenges, prioritizing by solve count (easy first)
-- Use read_solver_trace to monitor what each solver is doing and where it's stuck
-- When agents are stuck, read their traces, then craft targeted bumps with specific technical guidance
-- Use broadcast to share cross-solver insights (e.g. flag format discovery, shared vulnerabilities)
+Stratégie :
+- Chaque challenge est assigné à UN seul modèle (round-robin automatique)
+- Les modèles travaillent en PARALLÈLE sur des challenges DIFFÉRENTS — pas de compétition entre eux
+- Spawn un solver par challenge non résolu dès le départ
+- Surveille les solvers bloqués via read_solver_trace et envoie des bumps ciblés
+- Quand un solver résout un challenge, il s'arrête automatiquement
 
-CRITICAL RULES:
-- NEVER kill a swarm. Solvers will keep trying indefinitely with different approaches.
-  Even when stuck, they often unstick themselves after several bumps. Your job is to
-  HELP them, not give up on them. The only time a swarm should die is when the flag
-  is confirmed correct.
-- When a solver seems stuck, bump it with very specific technical guidance based on
-  its trace. Tell it exactly what to try next — specific tools, techniques, approaches.
-- Cost is not a concern. Keep all swarms running.
+RÈGLES :
+- NE JAMAIS kill un swarm sauf si le challenge est déjà résolu
+- Quand un solver est bloqué, lit sa trace et lui envoie des instructions techniques précises
+- Dès qu'un nouveau challenge apparaît, spawn immédiatement un solver dessus
+- Le coût n'est pas un problème — garde tous les solvers actifs
 
-You will receive event messages. Respond with tool calls to manage the competition.
+Tu recevras des messages d'événements. Réponds avec des appels d'outils.
 """
 
 COORDINATOR_TOOLS = [
@@ -329,10 +326,11 @@ async def run_codex_coordinator(
     no_submit: bool = False,
     coordinator_model: str | None = None,
     msg_port: int = 0,
+    ctfd=None,
 ) -> dict[str, Any]:
     """Run the Codex coordinator with the shared event loop."""
     ctfd, cost_tracker, deps = build_deps(
-        settings, model_specs, challenges_root, no_submit,
+        settings, model_specs, challenges_root, no_submit, ctfd=ctfd,
     )
     deps.msg_port = msg_port
 
