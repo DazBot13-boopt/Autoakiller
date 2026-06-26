@@ -20,6 +20,8 @@ dependencies = [
 [project.scripts]
 ctf-solve = "backend.cli:main"
 ctf-msg = "backend.cli:msg"
+ctf-pending = "backend.cli:pending"
+ctf-submit = "backend.cli:submit"
 
 [build-system]
 requires = ["hatchling"]

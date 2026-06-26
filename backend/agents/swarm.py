@@ -148,6 +148,26 @@ class ChallengeSolver:
                         False,
                     )
 
+            # Si trop de soumissions incorrectes → mettre en pending pour validation manuelle
+            if self._submit_count >= 3:
+                try:
+                    from backend.pending_flags import add_pending_flag
+                    add_pending_flag(
+                        challenge_name=self.meta.name,
+                        flag=normalized,
+                        model_spec=self.model_spec,
+                        wrong_attempts=self._submit_count,
+                        confidence="medium",
+                        reason=f"{self._submit_count} soumissions incorrectes — validation manuelle requise",
+                    )
+                except Exception:
+                    pass
+                return (
+                    f"FLAG MIS EN ATTENTE — {self._submit_count} soumissions incorrectes. "
+                    f"Flag '{normalized}' sauvegardé dans pending_flags.json pour validation manuelle.",
+                    False,
+                )
+
             self._submitted_flags.add(normalized)
 
             from backend.tools.core import do_submit_flag

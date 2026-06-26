@@ -286,5 +286,52 @@ def msg(message: str, port: int, host: str) -> None:
         sys.exit(1)
 
 
+@click.command()
+def pending() -> None:
+    """Afficher tous les flags en attente de validation manuelle."""
+    from backend.pending_flags import show_all_pending
+    show_all_pending()
+
+
+@click.command()
+@click.argument("challenge_name")
+@click.argument("flag")
+@click.option("--url", default=None, help="CTF platform URL")
+@click.option("--token", default=None, help="CTF API token")
+def submit(challenge_name: str, flag: str, url: str | None, token: str | None) -> None:
+    """Soumettre manuellement un flag pending."""
+    import asyncio as _asyncio
+    from backend.config import Settings
+    from backend.pending_flags import mark_submitted, load_pending
+
+    settings = Settings()
+    effective_url = url or settings.effective_url()
+    effective_token = token or settings.effective_token()
+    settings.ctf_url = effective_url
+    settings.ctf_token = effective_token
+
+    async def _submit():
+        from backend.platform.detect import detect_platform
+        from backend.platform.compat import PlatformClient
+        platform = await detect_platform(
+            url=effective_url,
+            token=effective_token,
+            username=settings.effective_user(),
+            password=settings.effective_pass(),
+        )
+        client = PlatformClient(platform)
+        try:
+            result = await client.submit_flag(challenge_name, flag)
+            if result.status in ("correct", "already_solved"):
+                console.print(f"[bold green]✅ CORRECT — {result.display}[/bold green]")
+                mark_submitted(challenge_name, flag, result.status)
+            else:
+                console.print(f"[bold red]❌ INCORRECT — {result.display}[/bold red]")
+        finally:
+            await client.close()
+
+    _asyncio.run(_submit())
+
+
 if __name__ == "__main__":
     main()
