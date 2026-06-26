@@ -29,11 +29,11 @@ pull:
 
 # ── Lancer l'agent ────────────────────────────────────────────────────────────
 run:
-	uv run ctf-solve --url $(CTF_URL) --user $(CTF_USER) --password $(CTF_PASS) -v
+	uv run ctf-solve -v
 
 # ── Test rapide (dry-run, pas de soumission) ──────────────────────────────────
 test:
-	uv run ctf-solve --url $(CTF_URL) --user $(CTF_USER) --password $(CTF_PASS) --no-submit -v
+	uv run ctf-solve --no-submit -v
 
 # ── Update depuis GitHub ──────────────────────────────────────────────────────
 update:
