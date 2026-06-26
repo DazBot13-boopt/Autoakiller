@@ -200,7 +200,8 @@ RUN pip3 install --no-cache-dir playwright \
     || echo "Playwright install failed (non-fatal)"
 
 # ── CADO-NFS (Number Field Sieve — large integer factoring + DLP) ─────────────
-RUN git clone --depth=1 https://gitlab.inria.fr/cado-nfs/cado-nfs.git /opt/cado-nfs \
+RUN pip3 install --no-cache-dir flask \
+    && git clone --depth=1 https://gitlab.inria.fr/cado-nfs/cado-nfs.git /opt/cado-nfs \
     && cd /opt/cado-nfs && make -j$(nproc)
 RUN printf '#!/bin/bash\n\
 BUILD_PARENT=/opt/cado-nfs/build\n\
