@@ -50,6 +50,7 @@ def _setup_logging(verbose: bool = False) -> None:
 @click.option("--challenges-json", default=None, help="Path to local JSON/YAML file with challenge data (offline mode)")
 @click.option("--only", multiple=True, help="Solve only these specific challenges (by name). Can be repeated.")
 @click.option("--max-bumps", default=10, type=int, help="Max retries per challenge before giving up (0 = unlimited)")
+@click.option("--local", "local_mode", is_flag=True, help="Run solvers locally without Docker (uses host tools)")
 @click.option("-v", "--verbose", is_flag=True, help="Verbose logging")
 def main(
     url: str | None,
@@ -70,6 +71,7 @@ def main(
     challenges_json: str | None,
     only: tuple[str, ...],
     max_bumps: int,
+    local_mode: bool,
     verbose: bool,
 ) -> None:
     """CTF Agent — multi-model solver swarm.
@@ -112,10 +114,14 @@ def main(
     if only:
         console.print(f"  Filter  : {', '.join(only)}")
     console.print(f"  Max bumps: {max_bumps if max_bumps > 0 else 'unlimited'}")
+    if local_mode:
+        console.print(f"  [bold yellow]Mode LOCAL — pas de Docker, outils hôte[/bold yellow]")
     console.print()
 
+    settings.local_mode = local_mode
+
     if challenge:
-        asyncio.run(_run_single(settings, challenge, model_specs, no_submit, max_challenges))
+        asyncio.run(_run_single(settings, challenge, model_specs, no_submit, max_challenges, local_mode=local_mode))
     else:
         asyncio.run(_run_coordinator(
             settings, model_specs, challenges_dir, no_submit,
@@ -123,6 +129,7 @@ def main(
             challenges_json=challenges_json,
             only_challenges=list(only),
             max_bumps=max_bumps,
+            local_mode=local_mode,
         ))
 
 
@@ -211,6 +218,7 @@ async def _run_coordinator(
     challenges_json: str | None = None,
     only_challenges: list[str] | None = None,
     max_bumps: int = 10,
+    local_mode: bool = False,
 ) -> None:
     """Run the full coordinator (continuous until Ctrl+C)."""
     from backend.sandbox import cleanup_orphan_containers, configure_semaphore
@@ -237,6 +245,7 @@ async def _run_coordinator(
                 ctfd=client,
                 only_challenges=only_challenges,
                 max_bumps=max_bumps,
+                local_mode=local_mode,
             )
         else:
             from backend.agents.claude_coordinator import run_claude_coordinator
@@ -250,6 +259,7 @@ async def _run_coordinator(
                 ctfd=client,
                 only_challenges=only_challenges,
                 max_bumps=max_bumps,
+                local_mode=local_mode,
             )
     finally:
         await client.close()

@@ -112,11 +112,12 @@ async def run_claude_coordinator(
     ctfd=None,
     only_challenges: list[str] | None = None,
     max_bumps: int = 10,
+    local_mode: bool = False,
 ) -> dict[str, Any]:
     """Run the Claude Agent SDK coordinator with the shared event loop."""
     ctfd, cost_tracker, deps = build_deps(
         settings, model_specs, challenges_root, no_submit, ctfd=ctfd,
-        only_challenges=only_challenges, max_bumps=max_bumps,
+        only_challenges=only_challenges, max_bumps=max_bumps, local_mode=local_mode,
     )
     deps.msg_port = msg_port
 

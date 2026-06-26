@@ -53,6 +53,7 @@ class ChallengeSolver:
     no_submit: bool = False
     coordinator_inbox: asyncio.Queue | None = None
     max_bumps: int = 10                # Nombre max de bumps avant abandon (0 = infini)
+    local_mode: bool = False           # True = pas de Docker, outils locaux
 
     cancel_event: asyncio.Event = field(default_factory=asyncio.Event)
     solver: SolverProtocol | None = field(default=None, repr=False)
@@ -76,6 +77,22 @@ class ChallengeSolver:
         return _notify
 
     def _create_solver(self) -> SolverProtocol:
+        # Mode local — pas de Docker, outils directs
+        if self.local_mode:
+            from backend.agents.local_solver import LocalSolver
+            return LocalSolver(
+                model_spec=self.model_spec,
+                challenge_dir=self.challenge_dir,
+                meta=self.meta,
+                ctfd=self.ctfd,
+                cost_tracker=self.cost_tracker,
+                settings=self.settings,
+                cancel_event=self.cancel_event,
+                no_submit=self.no_submit,
+                submit_fn=lambda flag: self.try_submit_flag(flag),
+                notify_coordinator=self._make_notify_fn(),
+            )
+
         provider = provider_from_spec(self.model_spec)
         submit_fn = lambda flag: self.try_submit_flag(flag)
         notify_fn = self._make_notify_fn()

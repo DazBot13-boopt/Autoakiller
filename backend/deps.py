@@ -44,10 +44,11 @@ class CoordinatorDeps:
     challenges_root: str = "challenges"
     no_submit: bool = False
     max_concurrent_challenges: int = 10
-    only_challenges: list[str] = field(default_factory=list)  # filtre par nom
-    max_bumps: int = 10  # max retries par challenge (0 = illimité)
+    only_challenges: list[str] = field(default_factory=list)
+    max_bumps: int = 10
+    local_mode: bool = False  # True = pas de Docker, outils hôte
 
-    msg_port: int = 0  # 0 = auto-pick free port
+    msg_port: int = 0
 
     # Runtime state
     coordinator_inbox: asyncio.Queue = field(default_factory=asyncio.Queue)

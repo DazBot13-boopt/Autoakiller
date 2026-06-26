@@ -31,6 +31,7 @@ def build_deps(
     ctfd=None,
     only_challenges: list[str] | None = None,
     max_bumps: int = 10,
+    local_mode: bool = False,
 ) -> tuple[Any, CostTracker, CoordinatorDeps]:
     """Create platform client, cost tracker, and coordinator deps.
 
@@ -69,6 +70,7 @@ def build_deps(
         challenge_metas=challenge_metas or {},
         only_challenges=only_challenges or [],
         max_bumps=max_bumps,
+        local_mode=local_mode,
     )
 
     # Pre-load already-pulled challenges
