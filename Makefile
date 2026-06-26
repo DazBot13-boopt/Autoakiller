@@ -35,7 +35,12 @@ run:
 test:
 	uv run ctf-solve --url $(CTF_URL) --user $(CTF_USER) --password $(CTF_PASS) --no-submit -v
 
-# ── Deps ──────────────────────────────────────────────────────────────────────
+# ── Update depuis GitHub ──────────────────────────────────────────────────────
+update:
+	git pull
+	UV_HTTP_TIMEOUT=300 uv sync
+	@echo "Code mis à jour. Relance avec: make run"
+
 install:
 	UV_HTTP_TIMEOUT=300 uv sync
 
