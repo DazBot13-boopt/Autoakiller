@@ -29,6 +29,8 @@ def build_deps(
     challenge_dirs: dict[str, str] | None = None,
     challenge_metas: dict[str, ChallengeMeta] | None = None,
     ctfd=None,
+    only_challenges: list[str] | None = None,
+    max_bumps: int = 10,
 ) -> tuple[Any, CostTracker, CoordinatorDeps]:
     """Create platform client, cost tracker, and coordinator deps.
 
@@ -65,6 +67,8 @@ def build_deps(
         max_concurrent_challenges=getattr(settings, "max_concurrent_challenges", 10),
         challenge_dirs=challenge_dirs or {},
         challenge_metas=challenge_metas or {},
+        only_challenges=only_challenges or [],
+        max_bumps=max_bumps,
     )
 
     # Pre-load already-pulled challenges
@@ -226,6 +230,9 @@ async def _auto_spawn_one(deps: CoordinatorDeps, challenge_name: str) -> None:
     """Auto-spawn a swarm for a single challenge if not already running."""
     if challenge_name in deps.swarms:
         return
+    # Filtrer si --only est spécifié
+    if deps.only_challenges and challenge_name not in deps.only_challenges:
+        return
     active = sum(1 for t in deps.swarm_tasks.values() if not t.done())
     if active >= deps.max_concurrent_challenges:
         return
@@ -240,6 +247,9 @@ async def _auto_spawn_one(deps: CoordinatorDeps, challenge_name: str) -> None:
 async def _auto_spawn_unsolved(deps: CoordinatorDeps, poller) -> None:
     """Auto-spawn swarms for all unsolved challenges that don't have active swarms."""
     unsolved = poller.known_challenges - poller.known_solved
+    # Filtrer si --only est spécifié
+    if deps.only_challenges:
+        unsolved = {n for n in unsolved if n in deps.only_challenges}
     for name in sorted(unsolved):
         await _auto_spawn_one(deps, name)
 

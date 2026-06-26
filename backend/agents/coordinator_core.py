@@ -93,6 +93,7 @@ async def do_spawn_swarm(deps: CoordinatorDeps, challenge_name: str, model_spec:
         model_specs=[assigned_model],   # 1 seul modèle par challenge
         no_submit=deps.no_submit,
         coordinator_inbox=deps.coordinator_inbox,
+        max_bumps=deps.max_bumps,
     )
     deps.swarms[challenge_name] = swarm
 

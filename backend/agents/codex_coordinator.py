@@ -327,10 +327,13 @@ async def run_codex_coordinator(
     coordinator_model: str | None = None,
     msg_port: int = 0,
     ctfd=None,
+    only_challenges: list[str] | None = None,
+    max_bumps: int = 10,
 ) -> dict[str, Any]:
     """Run the Codex coordinator with the shared event loop."""
     ctfd, cost_tracker, deps = build_deps(
         settings, model_specs, challenges_root, no_submit, ctfd=ctfd,
+        only_challenges=only_challenges, max_bumps=max_bumps,
     )
     deps.msg_port = msg_port
 

@@ -36,7 +36,7 @@ class CTFdPlatform(CTFPlatform):
         if self._client is None:
             self._client = httpx.AsyncClient(
                 base_url=self.base_url,
-                follow_redirects=False,
+                follow_redirects=True,  # nécessaire pour le login CTFd
                 verify=False,
                 timeout=30.0,
                 headers={"User-Agent": USER_AGENT},
@@ -63,7 +63,10 @@ class CTFdPlatform(CTFPlatform):
             data={"name": self.username, "password": self.password, "_submit": "Submit", "nonce": nonce},
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
-        if resp.status_code == 200:
+        # CTFd redirige vers /challenges (302) en cas de succès
+        # Avec follow_redirects=True, on reçoit 200 après redirection
+        # On vérifie qu'on n'est plus sur /login
+        if "/login" in str(resp.url):
             raise RuntimeError("CTFd login failed — check credentials")
         self._logged_in = True
         logger.info(f"[CTFd] Logged in as {self.username}")

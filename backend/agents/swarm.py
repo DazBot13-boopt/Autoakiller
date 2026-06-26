@@ -52,6 +52,7 @@ class ChallengeSolver:
     model_spec: str                    # Le modèle assigné à ce challenge
     no_submit: bool = False
     coordinator_inbox: asyncio.Queue | None = None
+    max_bumps: int = 10                # Nombre max de bumps avant abandon (0 = infini)
 
     cancel_event: asyncio.Event = field(default_factory=asyncio.Event)
     solver: SolverProtocol | None = field(default=None, repr=False)
@@ -213,6 +214,11 @@ class ChallengeSolver:
                     return result
 
                 bump_count += 1
+                # Vérifier la limite de bumps
+                if self.max_bumps > 0 and bump_count >= self.max_bumps:
+                    logger.warning(f"[{self.meta.name}/{self.model_spec}] Limite de bumps atteinte ({self.max_bumps}) — abandon")
+                    return result
+
                 wait = min(bump_count * 30, 300)
                 logger.info(f"[{self.meta.name}/{self.model_spec}] Bump #{bump_count}, reprise dans {wait}s")
 
@@ -265,6 +271,7 @@ class ChallengeSwarm:
     model_specs: list[str] = field(default_factory=lambda: list(DEFAULT_MODELS))
     no_submit: bool = False
     coordinator_inbox: asyncio.Queue | None = None
+    max_bumps: int = 10
 
     cancel_event: asyncio.Event = field(default_factory=asyncio.Event)
     solvers: dict[str, SolverProtocol] = field(default_factory=dict)
@@ -288,6 +295,7 @@ class ChallengeSwarm:
             no_submit=self.no_submit,
             coordinator_inbox=self.coordinator_inbox,
             cancel_event=self.cancel_event,
+            max_bumps=self.max_bumps,
         )
         result = await self._active_solver.run()
         if result and result.status == FLAG_FOUND:
