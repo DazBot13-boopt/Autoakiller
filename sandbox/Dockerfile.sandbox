@@ -194,8 +194,8 @@ RUN git clone --depth=1 https://github.com/pwndbg/pwndbg /opt/pwndbg \
 RUN gem install one_gadget \
     || echo "one_gadget install failed (non-fatal)"
 
-# ── Playwright (headless browser for JS-heavy web challenges) ─────────────────
-RUN pip3 install --no-cache-dir playwright \
+# ── Playwright (headless browser pour challenges web/OSINT JS-heavy) ──────────
+RUN pip3 install --no-cache-dir playwright playwright-stealth \
     && playwright install chromium --with-deps \
     || echo "Playwright install failed (non-fatal)"
 

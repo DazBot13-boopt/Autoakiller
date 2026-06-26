@@ -239,7 +239,7 @@ class ChallengeSolver:
                     logger.warning(f"[{self.meta.name}/{self.model_spec}] Limite de bumps atteinte ({self.max_bumps}) — abandon")
                     return result
 
-                wait = min(bump_count * 30, 300)
+                wait = 5  # attendre seulement 5s entre les bumps
                 logger.info(f"[{self.meta.name}/{self.model_spec}] Bump #{bump_count}, reprise dans {wait}s")
 
                 try:

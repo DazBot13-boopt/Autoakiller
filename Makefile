@@ -31,6 +31,13 @@ pull:
 run:
 	uv run ctf-solve -v
 
+# ── Lancer seulement avec Claude (sans Codex) ─────────────────────────────────
+run-claude:
+	uv run ctf-solve \
+		--models claude-sdk/claude-opus-4-6/medium \
+		--models claude-sdk/claude-opus-4-6/max \
+		--coordinator claude -v
+
 # ── Test rapide (dry-run, pas de soumission) ──────────────────────────────────
 test:
 	uv run ctf-solve --no-submit -v
